@@ -1,0 +1,14 @@
+{
+  "name": "agentic-testing-playwright",
+  "private": true,
+  "scripts": {
+    "test": "npx playwright test",
+    "allure:generate": "npx allure generate allure-results -o allure-report",
+    "allure:open": "npx allure open allure-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "allure-playwright": "^3.0.0",
+    "allure": "^3.0.0"
+  }
+}

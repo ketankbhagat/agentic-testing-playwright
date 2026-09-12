@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QA Agent Orchestration — Swag Labs</title>
+<style>
+  :root {
+    --bg: #0b0f17; --panel: #121826; --panel-2: #172033; --border: #232d42;
+    --text: #e6ebf5; --muted: #8391ab; --dim: #56627a;
+    --blue: #4c8dff; --green: #2fbf71; --amber: #f2a93b; --red: #f0555a; --violet: #9b7bff;
+    --mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+           padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+  h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+          border: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .pill.live .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .pill.down .dot { background: var(--red); }
+  button, a.btn { font: inherit; font-size: 13px; color: var(--text); background: var(--panel-2);
+           border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; cursor: pointer; text-decoration: none; }
+  button:hover, a.btn:hover { border-color: var(--blue); }
+  button:disabled { opacity: .5; cursor: default; }
+
+  .requirement { padding: 12px 20px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+  .requirement b { color: var(--text); font-weight: 500; }
+  .banner { margin: 12px 20px 0; padding: 10px 14px; border-radius: 8px; font-weight: 600; display: none; }
+  .banner.pass { display: block; background: rgba(47,191,113,.12); border: 1px solid var(--green); color: var(--green); }
+  .banner.fail { display: block; background: rgba(240,85,90,.12); border: 1px solid var(--red); color: var(--red); }
+
+  main { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 16px; padding: 16px 20px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted);
+              margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--border); font-weight: 600; }
+
+  .pipeline { padding: 12px; }
+  .node { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center;
+          padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2);
+          cursor: pointer; transition: border-color .2s, box-shadow .2s; }
+  .node:hover { border-color: var(--dim); }
+  .node.selected { border-color: var(--blue); }
+  .node .idx { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+               font-size: 12px; font-weight: 600; background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+  .node .name { font-weight: 600; }
+  .node .sub { color: var(--muted); font-size: 12px; }
+  .node .summary { color: var(--dim); font-size: 12px; grid-column: 2 / 4; margin-top: -4px;
+                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bg); color: var(--muted);
+           border: 1px solid var(--border); white-space: nowrap; }
+  .node.running { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue), 0 0 18px rgba(76,141,255,.25); }
+  .node.running .idx { border-color: var(--blue); color: var(--blue); animation: pulse 1.2s infinite; }
+  .node.running .badge { color: var(--blue); border-color: var(--blue); }
+  .node.done .idx { background: var(--green); color: #06120b; border-color: var(--green); }
+  .node.done .badge { color: var(--green); border-color: rgba(47,191,113,.5); }
+  .node.failed { border-color: var(--red); }
+  .node.failed .idx { background: var(--red); color: #1a0506; border-color: var(--red); }
+  .node.failed .badge { color: var(--red); border-color: var(--red); }
+
+  .gate { display: flex; align-items: center; gap: 8px; margin: 0 0 0 25px; padding: 7px 0 7px 18px;
+          border-left: 2px dashed var(--border); color: var(--dim); font-size: 12px; }
+  .gate .icon { font-size: 13px; }
+  .gate.waiting { color: var(--amber); border-left-color: var(--amber); }
+  .gate.waiting .label { animation: pulse 1.2s infinite; }
+  .gate.approved { color: var(--green); border-left-color: var(--green); }
+  .gate.rejected { color: var(--red); border-left-color: var(--red); }
+  .connector { margin-left: 25px; height: 12px; border-left: 2px solid var(--border); }
+  .loop { margin: 8px 0 0 0; color: var(--dim); font-size: 12px; padding-left: 4px; }
+  @keyframes pulse { 50% { opacity: .45; } }
+
+  .detail { display: flex; flex-direction: column; min-height: 420px; }
+  .detail .head { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex;
+                  justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .detail .head .title { font-weight: 600; }
+  .detail .head .meta { color: var(--muted); font-size: 12px; }
+  .detail pre { margin: 0; padding: 14px; overflow: auto; flex: 1; max-height: 62vh;
+                font: 12.5px/1.55 var(--mono); color: #cdd6e6; white-space: pre-wrap; word-break: break-word; }
+
+  .log { margin: 0 20px 20px; }
+  .log ol { list-style: none; margin: 0; padding: 6px 0; max-height: 240px; overflow: auto; font: 12.5px/1.6 var(--mono); }
+  .log li { display: grid; grid-template-columns: 70px 120px 1fr; gap: 10px; padding: 2px 14px; }
+  .log li .t { color: var(--dim); }
+  .log li .n { color: var(--violet); }
+  .log li.warn .m { color: var(--amber); } .log li.ok .m { color: var(--green); } .log li.err .m { color: var(--red); }
+  @media (max-width: 600px) { .log li { grid-template-columns: 1fr; gap: 0; padding: 4px 14px; } }
+  footer { color: var(--dim); font-size: 12px; padding: 0 20px 16px; font-family: var(--mono); }
+</style>
+</head>
+<body>
+<header>
+  <h1>QA Agent Orchestration <small>LangGraph · human-in-the-loop · Swag Labs</small></h1>
+  <div class="toolbar">
+    <span id="conn" class="pill"><span class="dot"></span><span id="connText">connecting…</span></span>
+    <a id="allureLink" class="btn" href="/allure/" target="_blank" hidden>📊 Allure report</a>
+    <button id="simBtn" title="Replay a scripted run locally — no API calls">▶ Simulate demo</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+</header>
+
+<div class="requirement" id="requirement">Waiting for <b>python main.py</b> — or press <b>Simulate demo</b>.</div>
+<div class="banner" id="banner"></div>
+
+<main>
+  <section class="panel">
+    <h2>Pipeline</h2>
+    <div class="pipeline" id="pipeline"></div>
+  </section>
+  <section class="panel detail">
+    <div class="head"><span class="title" id="detailTitle">Select a node</span><span class="meta" id="detailMeta"></span></div>
+    <pre id="detailBody">Click any node to see what it produced.</pre>
+  </section>
+</main>
+
+<section class="panel log">
+  <h2>Event log</h2>
+  <ol id="log"></ol>
+</section>
+
+<footer>target: www.saucedemo.com · dashboard: localhost:8500 · SSE /api/stream</footer>
+
+<script>
+const NODES = [
+  { id: 'gap_analyzer',   name: 'Gap Analyzer',   sub: 'RAG over JIRA / docs (ChromaDB)' },
+  { id: 'bdd_generator',  name: 'BDD Generator',  sub: 'Gherkin .feature' },
+  { id: 'app_explorer',   name: 'App Explorer',   sub: 'Playwright MCP POC — live crawl' },
+  { id: 'test_generator', name: 'Test Generator', sub: 'Playwright .spec.ts' },
+  { id: 'test_runner',    name: 'Test Runner',    sub: 'Playwright (headed) + Allure' },
+  { id: 'fix_agent',      name: 'Fix Agent',      sub: 'Diagnose failure → patch' },
+];
+// Gate name (graph node interrupted before) → node whose output is reviewed there
+const GATES = {
+  generate_bdd: { after: 'gap_analyzer',   label: 'Human review — gap analysis' },
+  explore_app:  { after: 'bdd_generator',  label: 'Human review — BDD scenarios' },
+  run_tests:    { after: 'test_generator', label: 'Human review — tests before run' },
+  apply_fix:    { after: 'fix_agent',      label: 'Human review — suggested fix' },
+};
+const ON_APPROVE = { generate_bdd: 'bdd_generator', explore_app: 'app_explorer', run_tests: 'test_runner', apply_fix: 'fix_agent' };
+const ON_REJECT  = { generate_bdd: 'gap_analyzer',  explore_app: 'bdd_generator', run_tests: 'test_generator', apply_fix: 'fix_agent' };
+const HINTS = {
+  gap_analyzer:   'Retrieves JIRA-201..205, schema, route spec and changelog from the knowledge base, then asks Claude what the purchase flow is missing.',
+  bdd_generator:  'Turns the approved gaps into 5 Gherkin scenarios: 4 @browser + 1 @api.',
+  app_explorer:   'Drives a visible Chromium through login → inventory → cart → checkout → complete and extracts real selectors.',
+  test_generator: 'Writes tests/swag-labs.spec.ts from the BDD scenarios and the explored selectors.',
+  test_runner:    'npx playwright test (workers: 1, slowMo 600ms, headed) → allure-results → allure-report.',
+  fix_agent:      'Reads the failure output and proposes a complete corrected spec. Applied only after human approval, max 2 retries.',
+};
+
+const $ = id => document.getElementById(id);
+let state, selected = null, simTimers = [];
+
+function resetUI() {
+  state = { nodes: {}, gates: {}, details: {}, summaries: {} };
+  NODES.forEach(n => state.nodes[n.id] = 'idle');
+  $('log').innerHTML = '';
+  $('banner').className = 'banner'; $('banner').textContent = '';
+  $('requirement').innerHTML = 'Waiting for <b>python main.py</b> — or press <b>Simulate demo</b>.';
+  $('allureLink').hidden = true;
+  selected = null;
+  render(); showDetail(null);
+}
+
+const BADGE = { idle: 'idle', running: 'running', done: 'done', failed: 'failed' };
+
+function render() {
+  const el = $('pipeline'); el.innerHTML = '';
+  NODES.forEach((n, i) => {
+    if (i > 0) el.appendChild(Object.assign(document.createElement('div'), { className: 'connector' }));
+    const s = state.nodes[n.id];
+    const card = document.createElement('div');
+    card.className = `node ${s}${selected === n.id ? ' selected' : ''}`;
+    card.innerHTML = `<div class="idx">${s === 'done' ? '✓' : s === 'failed' ? '✕' : i + 1}</div>
+      <div><div class="name">${n.name}</div><div class="sub">${n.sub}</div></div>
+      <span class="badge">${BADGE[s]}</span>
+      ${state.summaries[n.id] ? `<div class="summary">${esc(state.summaries[n.id])}</div>` : ''}`;
+    card.onclick = () => { selected = n.id; render(); showDetail(n.id); };
+    el.appendChild(card);
+    const gateName = Object.keys(GATES).find(g => GATES[g].after === n.id);
+    if (gateName) {
+      const g = state.gates[gateName] || 'idle';
+      const icon = { idle: '👤', waiting: '⏳', approved: '✅', rejected: '↻' }[g];
+      const gate = document.createElement('div');
+      gate.className = `gate ${g}`;
+      gate.innerHTML = `<span class="icon">${icon}</span><span class="label">${GATES[gateName].label}${g === 'waiting' ? ' — waiting in terminal' : ''}</span>`;
+      el.appendChild(gate);
+    }
+  });
+  el.appendChild(Object.assign(document.createElement('div'), { className: 'loop', textContent: '↺ fix approved → apply → review → re-run tests (max 2 retries)' }));
+}
+
+function showDetail(id) {
+  if (!id) { $('detailTitle').textContent = 'Select a node'; $('detailMeta').textContent = ''; $('detailBody').textContent = 'Click any node to see what it produced.'; return; }
+  const n = NODES.find(x => x.id === id);
+  $('detailTitle').textContent = n.name;
+  $('detailMeta').textContent = state.summaries[id] || state.nodes[id];
+  $('detailBody').textContent = state.details[id] || HINTS[id];
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function log(node, msg, cls = '') {
+  const li = document.createElement('li'); li.className = cls;
+  const t = new Date().toLocaleTimeString([], { hour12: false });
+  li.innerHTML = `<span class="t">${t}</span><span class="n">${esc(node)}</span><span class="m">${esc(msg)}</span>`;
+  $('log').appendChild(li); $('log').scrollTop = $('log').scrollHeight;
+}
+
+function setRunning(id) { state.nodes[id] = 'running'; }
+
+function handle(ev) {
+  switch (ev.type) {
+    case 'reset': resetUI(); break;
+    case 'start':
+      resetUI();
+      $('requirement').innerHTML = `<b>Requirement:</b> ${esc(ev.requirement)}${ev.model ? ` <span style="color:var(--dim)">· ${esc(ev.model)}</span>` : ''}`;
+      setRunning('gap_analyzer');
+      log('pipeline', 'Run started');
+      break;
+    case 'node_update': {
+      const id = ev.node === 'apply_fix' ? 'fix_agent' : ev.node;
+      if (!state.nodes[id]) break;
+      if (ev.details) state.details[id] = ev.details;
+      state.summaries[id] = ev.summary || '';
+      if (ev.node === 'test_runner') {
+        state.nodes[id] = ev.test_passed ? 'done' : 'failed';
+        if (!ev.test_passed) setRunning('fix_agent');
+        if (ev.summary && ev.summary.includes('allure')) $('allureLink').hidden = false;
+      } else {
+        state.nodes[id] = 'done';
+        if (ev.node === 'app_explorer') setRunning('test_generator');
+      }
+      log(ev.node, ev.summary || 'completed', ev.node === 'test_runner' ? (ev.test_passed ? 'ok' : 'err') : '');
+      if (!selected || selected === id) { selected = id; showDetail(id); }
+      break;
+    }
+    case 'waiting_human':
+      if (GATES[ev.node]) state.gates[ev.node] = 'waiting';
+      log('human', `${GATES[ev.node]?.label || ev.node} — approve in terminal`, 'warn');
+      if (GATES[ev.node]) { selected = GATES[ev.node].after; showDetail(selected); }
+      break;
+    case 'human_decision':
+      state.gates[ev.node] = ev.approved ? 'approved' : 'rejected';
+      setRunning(ev.approved ? ON_APPROVE[ev.node] : ON_REJECT[ev.node]);
+      log('human', ev.approved ? `Approved ${ev.node}` : `Rejected ${ev.node}: ${ev.feedback || '(no feedback)'}`, ev.approved ? 'ok' : 'err');
+      break;
+    case 'complete':
+      Object.keys(state.nodes).forEach(k => { if (state.nodes[k] === 'running') state.nodes[k] = 'idle'; });
+      $('banner').className = `banner ${ev.test_passed ? 'pass' : 'fail'}`;
+      $('banner').textContent = ev.test_passed ? '✅ All 5 tests passed' : '❌ Pipeline completed with failures';
+      if (ev.allure) $('allureLink').hidden = false;
+      log('pipeline', ev.test_passed ? 'Complete — all tests passed' : 'Complete — failures remain', ev.test_passed ? 'ok' : 'err');
+      break;
+    case 'aborted':
+      Object.keys(state.nodes).forEach(k => { if (state.nodes[k] === 'running') state.nodes[k] = 'idle'; });
+      log('pipeline', 'Aborted by reviewer', 'err');
+      break;
+  }
+  render();
+}
+
+// ---------- SSE ----------
+function connect() {
+  const es = new EventSource('/api/stream');
+  es.onopen = () => { resetUI(); $('conn').className = 'pill live'; $('connText').textContent = 'live'; };
+  es.onmessage = e => { try { handle(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+  es.onerror = () => { $('conn').className = 'pill down'; $('connText').textContent = 'disconnected — retrying'; };
+}
+
+// ---------- Demo simulation (local only, no server/API calls) ----------
+const SIM = {
+  gap: `# Gap Report — Swag Labs purchase flow
+
+## 1. Existing Coverage
+- JIRA-201 (Login): acceptance criteria documented, selectors known — NO automated tests
+- JIRA-202 (Inventory) / JIRA-203 (Cart): Done, manual only
+- JIRA-204 (Checkout): In Progress — no automated coverage
+- changelog.md: "No automated test suite exists", "No regression suite"
+
+## 2. Gaps Found
+| # | Gap | Source | Risk |
+|---|-----|--------|------|
+| G1 | No end-to-end login → checkout complete test | JIRA-204 MISSING | HIGH |
+| G2 | locked_out_user rejection never tested | JIRA-201 | HIGH |
+| G3 | Cart badge count after add-to-cart unverified | JIRA-202 MISSING | MEDIUM |
+| G4 | Direct access to /inventory.html without session untested | api-spec.md | MEDIUM |
+| G5 | Checkout field validation + 8% tax total untested | JIRA-204 MISSING | MEDIUM |
+
+## 3. Recommended Fixes
+- G1: Playwright E2E — login, add Sauce Labs Backpack ($29.99), checkout, assert "Thank you for your order!"
+- G2: negative login test asserting [data-test="error"] contains "locked out"
+- G3: assert .shopping_cart_badge = "1" after add
+- G4: goto /inventory.html unauthenticated, assert auth error visible`,
+  bdd: `Feature: Swag Labs purchase flow
+  As a shopper on www.saucedemo.com
+  I want to log in, add a product and check out
+
+  @browser
+  Scenario: Successful login
+    Given I am on the login page
+    When I log in as "standard_user" with password "secret_sauce"
+    Then the URL should contain "/inventory.html"
+
+  @browser
+  Scenario: Locked out user is rejected
+    Given I am on the login page
+    When I log in as "locked_out_user" with password "secret_sauce"
+    Then I should see an error containing "Sorry, this user has been locked out."
+
+  @browser
+  Scenario: Add Sauce Labs Backpack to cart
+    Given I am logged in as "standard_user"
+    When I add "Sauce Labs Backpack" to the cart
+    Then the cart badge should show "1"
+
+  @browser
+  Scenario: Complete purchase end to end
+    Given I am logged in as "standard_user"
+    And I add "Sauce Labs Backpack" to the cart
+    When I open the cart and click Checkout
+    And I enter first name "Test", last name "User", postal code "30301"
+    And I click Continue and then Finish
+    Then I should see "Thank you for your order!"
+
+  @api
+  Scenario: Inventory requires authentication
+    Given I have no login session
+    When I request "/inventory.html"
+    Then I should see "Epic sadface: You can only access '/inventory.html' when you are logged in."`,
+  explore: `# Test Selector Reference (explored live: 6 pages)
+
+## Login — https://www.saucedemo.com/
+  page.locator('#user-name')            username input
+  page.locator('#password')             password input
+  page.locator('#login-button')         submit
+  page.locator('[data-test="error"]')   error container ("Epic sadface: ...")
+
+## Inventory — **/inventory.html   (6 products)
+  page.locator('[data-test="add-to-cart-sauce-labs-backpack"]')   Backpack $29.99
+  page.locator('.shopping_cart_badge')  → "1" after add
+  page.locator('.shopping_cart_link')   cart icon
+  page.locator('.product_sort_container')
+
+## Cart — **/cart.html
+  page.locator('.cart_item')            1 item
+  page.locator('[data-test="checkout"]')
+
+## Checkout step one — **/checkout-step-one.html
+  [data-test="firstName"] [data-test="lastName"] [data-test="postalCode"] [data-test="continue"]
+
+## Checkout step two — **/checkout-step-two.html
+  page.locator('.summary_total_label')  "Total: $32.39"
+  page.locator('[data-test="finish"]')
+
+## Complete — **/checkout-complete.html
+  page.locator('.complete-header')      "Thank you for your order!"`,
+  tests: `import { test, expect } from '@playwright/test';
+
+async function login(page, user = 'standard_user') {
+  await page.goto('/');
+  await page.locator('#user-name').fill(user);
+  await page.locator('#password').fill('secret_sauce');
+  await page.locator('#login-button').click();
+}
+
+test.describe('Swag Labs — Purchase Flow', () => {
+  test('1 — valid login redirects to inventory', async ({ page }) => {
+    await login(page);
+    await expect(page).toHaveURL(/inventory\\.html/);
+  });
+
+  test('2 — locked user sees error message', async ({ page }) => {
+    await login(page, 'locked_out_user');
+    await expect(page.locator('[data-test="error"]')).toContainText('locked out');
+  });
+
+  test('3 — add Backpack to cart shows badge', async ({ page }) => {
+    await login(page);
+    await page.locator('[data-test="add-to-cart-sauce-labs-backpack"]').click();
+    await expect(page.locator('.shopping_cart_badge')).toHaveText('1');
+  });
+
+  test('4 — complete purchase end to end', async ({ page }) => {
+    await login(page);
+    await page.locator('[data-test="add-to-cart-sauce-labs-backpack"]').click();
+    await page.locator('.shopping_cart_link').click();
+    await page.locator('[data-test="checkout"]').click();
+    await page.locator('[data-test="firstName"]').fill('Test');
+    await page.locator('[data-test="lastName"]').fill('User');
+    await page.locator('[data-test="postalCode"]').fill('30301');
+    await page.locator('[data-test="continue"]').click();
+    await page.locator('[data-test="finish"]').click();
+    await expect(page.locator('.complete-header')).toHaveText('Thank you for your order!');
+  });
+
+  test('5 — inventory page requires authentication', async ({ page }) => {
+    await page.goto('/inventory.html');
+    await expect(page).toHaveURL('https://www.saucedemo.com/');
+  });
+});`,
+  run1: `Running 5 tests using 1 worker
+
+  ✓  1 — valid login redirects to inventory (4.1s)
+  ✓  2 — locked user sees error message (3.2s)
+  ✓  3 — add Backpack to cart shows badge (4.8s)
+  ✓  4 — complete purchase end to end (11.6s)
+  ✘  5 — inventory page requires authentication (5.4s)
+
+  1) 5 — inventory page requires authentication
+     Error: Timed out 5000ms waiting for expect(page).toHaveURL(expected)
+     Expected string: "https://www.saucedemo.com/"
+     Received string: "https://www.saucedemo.com/inventory.html"
+
+  1 failed
+  4 passed (29.1s)`,
+  fix: `// Diagnosis: test 5 expected a redirect to "/", but saucedemo.com keeps the URL on
+// /inventory.html and renders the login form with an auth error instead.
+// Fix: assert the error container is visible with the "only access" message.
+
+  test('5 — inventory page requires authentication', async ({ page }) => {
+    await page.goto('/inventory.html');
+    const error = page.locator('[data-test="error"]');
+    await expect(error).toBeVisible();
+    await expect(error).toContainText("You can only access '/inventory.html' when you are logged in");
+  });`,
+  run2: `Running 5 tests using 1 worker
+
+  ✓  1 — valid login redirects to inventory (4.0s)
+  ✓  2 — locked user sees error message (3.1s)
+  ✓  3 — add Backpack to cart shows badge (4.7s)
+  ✓  4 — complete purchase end to end (11.4s)
+  ✓  5 — inventory page requires authentication (2.9s)
+
+  5 passed (26.5s)`,
+};
+
+function simulate() {
+  simTimers.forEach(clearTimeout); simTimers = [];
+  const steps = [
+    [0,    { type: 'start', requirement: 'Add end-to-end test coverage for the complete purchase flow — login, add Sauce Labs Backpack to cart, checkout with shipping info, and order confirmation', model: 'simulation' }],
+    [2200, { type: 'node_update', node: 'gap_analyzer', summary: 'JIRA-204 has no e2e test · JIRA-201 has no locked-user test', details: SIM.gap }],
+    [3000, { type: 'waiting_human', node: 'generate_bdd' }],
+    [5000, { type: 'human_decision', node: 'generate_bdd', approved: true }],
+    [7200, { type: 'node_update', node: 'bdd_generator', summary: 'BDD scenarios ready — 4 browser + 1 API test', details: SIM.bdd }],
+    [8000, { type: 'waiting_human', node: 'explore_app' }],
+    [10000,{ type: 'human_decision', node: 'explore_app', approved: true }],
+    [13500,{ type: 'node_update', node: 'app_explorer', summary: 'Explored 6 pages via Playwright — login through checkout complete', details: SIM.explore }],
+    [16000,{ type: 'node_update', node: 'test_generator', summary: '5 Playwright tests generated — review before execution', details: SIM.tests }],
+    [16800,{ type: 'waiting_human', node: 'run_tests' }],
+    [18800,{ type: 'human_decision', node: 'run_tests', approved: true }],
+    [23500,{ type: 'node_update', node: 'test_runner', test_passed: false, summary: 'Tests FAILED — 4 passed, 1 failed (auth-required assertion)', details: SIM.run1 }],
+    [26000,{ type: 'node_update', node: 'fix_agent', summary: 'Fix suggested (retry 1/2)', details: SIM.fix }],
+    [26800,{ type: 'waiting_human', node: 'apply_fix' }],
+    [28800,{ type: 'human_decision', node: 'apply_fix', approved: true }],
+    [29600,{ type: 'node_update', node: 'apply_fix', summary: 'Fix applied — re-running tests', details: SIM.fix }],
+    [30400,{ type: 'waiting_human', node: 'run_tests' }],
+    [32000,{ type: 'human_decision', node: 'run_tests', approved: true }],
+    [36500,{ type: 'node_update', node: 'test_runner', test_passed: true, summary: 'Tests PASSED — 5/5', details: SIM.run2 }],
+    [37000,{ type: 'complete', test_passed: true }],
+  ];
+  steps.forEach(([ms, ev]) => simTimers.push(setTimeout(() => handle(ev), ms)));
+}
+
+$('simBtn').onclick = simulate;
+$('resetBtn').onclick = () => { simTimers.forEach(clearTimeout); simTimers = []; fetch('/api/reset', { method: 'POST' }).catch(() => {}); resetUI(); };
+
+resetUI();
+connect();
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Dependencies / environments
+.venv/
+node_modules/
+__pycache__/
+
+# Generated run output (can contain local paths, screenshots, videos)
+allure-results/*
+allure-report/*
+!allure-results/.gitkeep
+!allure-report/.gitkeep
+test-results/
+playwright-report/
+
+# Runtime scratch
+.dashboard.pid
+.explore-app.tmp.js
+.probe.tmp.js
