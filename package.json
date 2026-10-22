@@ -1,5 +1,6 @@
 {
   "name": "agentic-testing-playwright",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "test": "npx playwright test",

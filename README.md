@@ -332,3 +332,7 @@ Real issues hit while building this, and worth knowing for any agentic test proj
   it can contain screenshots, videos and local file paths.
 - The only credentials in the code are saucedemo.com's public demo logins.
 - The dashboard binds to `127.0.0.1` and has no authentication, so don't expose it publicly.
+
+## License
+
+[MIT](LICENSE) © 2026 Ketan Bhagat
